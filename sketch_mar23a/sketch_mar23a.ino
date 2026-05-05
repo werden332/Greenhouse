@@ -82,7 +82,7 @@ public:
 class Pump {
 private:
     int pin;
-    bool is_on;
+    bool is_on=1;
 public:
     Pump(int pin) : pin(pin), is_on(0){}; 
     void set_on(bool condition){ is_on = condition; }
@@ -137,7 +137,7 @@ void control_temperature()
         fan.set_on(1);
     }
 
-    if (thermometer.get_temperature() < 20) {
+    if (thermometer.get_temperature() < 30) {
         heater.set_on(1);
         fan.set_on(1);
     }
@@ -146,10 +146,10 @@ void control_temperature()
 void control_light()
 {
     if (light_sensor.get_light() < 500) {
-        lump.set_on(1);
+        lump.set_on(0);
     }
     else{
-        lump.set_on(0);
+        lump.set_on(1);
     }
 }
 
@@ -157,11 +157,11 @@ unsigned long previousMillis = 0;
 const long interval = 1000; 
 void control_humidity()
 {
-    if (gigrometer_air.get_humidity() > 70 && gigrometer_soil.get_humidity() > 70) {
+    if (gigrometer_air.get_humidity() > 70 && (gigrometer_soil.get_humidity()/1023)*100 > 70) {
         pump.set_on(0);
     }
-
-    if (gigrometer_air.get_humidity() < 30 && gigrometer_soil.get_humidity() < 30) {
+    
+    if (gigrometer_air.get_humidity() < 20 && gigrometer_soil.get_humidity() < 30) {
         unsigned long currentMillis = millis();
         if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
@@ -169,9 +169,17 @@ void control_humidity()
         }
     }
 }
+void print_data(){
+    Serial.print("Температура: ");
+    Serial.println(thermometer.get_temperature());
+    Serial.print("Влажность почвы: ");
+    Serial.println(gigrometer_soil.get_humidity());
+    Serial.print("Влажность воздуха: ");
+    Serial.println(gigrometer_air.get_humidity());
+}
 
-
-
+unsigned long previousMillis_print = 0;
+const long interval_print = 1000;
 void loop()
 {    
   thermometer.get_temperature();
@@ -187,6 +195,11 @@ void loop()
   heater.power();
   pump.power();
   fan.power();
-    
+  
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis_print >= interval_print) {
+  previousMillis_print = currentMillis;
+  print_data();
+  }
     
 }
