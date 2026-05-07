@@ -1,7 +1,32 @@
 #include <stdio.h>
 #include <DHT.h>
 
+struct Plant {
+  int max_temperature;
+  int min_temperature;
+  int max_Ahumidity;
+  int min_Ahumidity;
+  int max_Shumidity;
+  int min_Shumidity;
+  int max_light;
+  int min_light;
+  int night_light;
+};
 
+Plant tomato;
+
+void tomato_init() {
+  tomato.max_temperature = 30;
+  tomato.min_temperature = 20;
+  tomato.max_Shumidity = 800;
+  tomato.min_Shumidity = 600;
+  tomato.max_Ahumidity = 70;
+  tomato.min_Ahumidity = 50;
+  tomato.max_light = 700;
+  tomato.min_light = 500;
+}
+
+// датчики
 class AirSensor {
 private:
   int pin;
@@ -9,187 +34,173 @@ private:
 public:
   float humidity;
   float temperature;
-public:
-  AirSensor(int pin): dht(pin, DHT11), pin(pin){
+  AirSensor(int pin) : dht(pin, DHT11), pin(pin) {
     humidity = 0;
     temperature = 0;
   }
-public:
   void begin() { dht.begin(); }
-public:
   void update() {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-
-    // Проверка: если датчик вернул ошибку (NaN), не обновляем переменные
-  if (!isnan(h) && !isnan(t)) {
-    humidity = h;
-    temperature = t;
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+    if (!isnan(h) && !isnan(t)) {
+      humidity = h;
+      temperature = t;
     }
   }
 };
 
 class HygrometerSoil {
 private:
-	int pin;
+  int pin;
 public:
-	int humidity;
-public:
-	HygrometerSoil(int pin) : pin(pin) { humidity = 0; }
-public:
-	void get_humidity() { humidity = analogRead(pin); }
+  int humidity;
+  HygrometerSoil(int pin) : pin(pin) { humidity = 0; }
+  void get_humidity() { humidity = analogRead(pin); }
 };
 
 class Light {
 private:
-	int pin;
+  int pin;
 public:
-	int light;
-public:
-	Light(int pin) : pin(pin) { light = 0; }
-public:
-	void get_light() { light = analogRead(pin); }
+  int light;
+  Light(int pin) : pin(pin) { light = 0; }
+  void get_light() { light = analogRead(pin); }
 };
 
-
-
+// актуаторы
 class Lamp {
 private:
-	int pin;
+  int pin;
 public:
-	bool on_lamp;
-public:
-	Lamp(int pin) : pin(pin) { 
+  bool on_lamp;
+  Lamp(int pin) : pin(pin) {
     on_lamp = false;
     pinMode(pin, OUTPUT);
-  }; // присваивает лампе определенный пин и объявляет переменные
-public:
-	void power();
+  }
+  void power();
 };
 
 class Fan {
 private:
   int pin;
 public:
-	bool on_fan;
-public:
-	Fan(int pin) : pin(pin) {
-     on_fan = false;
-     pinMode(pin, OUTPUT);
-  };
-public:
-	void power();
+  bool on_fan;
+  Fan(int pin) : pin(pin) {
+    on_fan = false;
+    pinMode(pin, OUTPUT);
+  }
+  void power();
 };
 
 class Heater {
 private:
   int pin;
 public:
-	bool on_heat;
-public:
-	Heater(int pin) : pin(pin) {
+  bool on_heat;
+  Heater(int pin) : pin(pin) {
     on_heat = false;
     pinMode(pin, OUTPUT);
-  };
-public:
-	void power();
+  }
+  void power();
 };
 
 class Pump {
 private:
   int pin;
 public:
-	bool on_pump;
-public:
-	Pump(int pin) : pin(pin) { 
+  bool on_pump;
+  Pump(int pin) : pin(pin) {
     on_pump = false;
     pinMode(pin, OUTPUT);
-  };
-public:
-	void power();
+  }
+  void power();
 };
 
-
-
-void Heater::power()
-{
-	if (on_heat) {digitalWrite(pin, HIGH);}
-	else {digitalWrite(pin, LOW);}
+void Heater::power() {
+  if (on_heat) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
 }
 
-void Pump::power()
-{
-	if (on_pump) {digitalWrite(pin, HIGH);}
-	else {digitalWrite(pin, LOW);}
+void Pump::power() {
+  if (on_pump && millis() % 10000 <= 2000) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
 }
 
-void Lamp::power()
-{
-	if (on_lamp) {digitalWrite(pin, HIGH);}
-	else {digitalWrite(pin, LOW);}
+void Lamp::power() {
+  if (on_lamp) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
 }
 
-void Fan::power(){
-  if (on_fan) {digitalWrite(pin, HIGH);}
-	else {digitalWrite(pin, LOW);}
+void Fan::power() {
+  if (on_fan) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
 }
 
+void control_temperature(AirSensor &t, Heater &h, Fan &f, Plant &plant);
+void control_air_humidity(AirSensor &hyg, Fan &f, Plant &plant);
+void control_soil_humidity(HygrometerSoil &hyg, Pump &p, Fan &f, Plant &plant);
+void control_light(Light &lig, Lamp &l, Plant &p);
+void scheduled_ventilation(Fan &f);
 
 
-void control_temperature(AirSensor &t, Heater &h, Fan &f){
-  if(t.temperature > 22 && t.temperature < 27){
+void control_temperature(AirSensor &t, Heater &h, Fan &f, Plant &plant) {
+  if (t.temperature > plant.min_temperature && t.temperature < plant.max_temperature) {
     h.on_heat = false;
     f.on_fan = false;
-  } 
-  else if(t.temperature < 20){
+  }
+  else if (t.temperature < plant.min_temperature) {
     h.on_heat = true;
     f.on_fan = false;
   }
-  else if(t.temperature > 30){
+  else if (t.temperature > plant.max_temperature) {
     h.on_heat = false;
     f.on_fan = true;
   }
 }
 
-void control_air_humidity(AirSensor &hum, Pump &p, Fan &f){
-  if(hum.humidity > 1 && hum.humidity < 1){ //TODO
-    p.on_pump = false;
-    f.on_fan = false;
-  } 
-  else if(hum.humidity < 1){
-    p.on_pump = true;
+void control_air_humidity(AirSensor &hyg, Fan &f, Plant &plant) {
+  if (hyg.humidity > plant.min_Ahumidity && hyg.humidity < plant.max_Ahumidity) {
     f.on_fan = false;
   }
-  else if(hum.humidity > 1){
-    p.on_pump = false;
+  else if (hyg.humidity <= plant.min_Ahumidity) {
+    f.on_fan = false;
+  }
+  else if (hyg.humidity >= plant.max_Ahumidity) {
     f.on_fan = true;
   }
 }
 
-void control_soil_humidity(HygrometerSoil &hum, Pump &p, Fan &f){
-  if(hum.humidity > 990 && hum.humidity < 1040){
+void control_soil_humidity(HygrometerSoil &hyg, Pump &p, Fan &f, Plant &plant) {
+  if (hyg.humidity > plant.max_Shumidity && hyg.humidity < plant.min_Shumidity) {
     p.on_pump = false;
     f.on_fan = false;
-  } 
-  else if(hum.humidity <= 990){
+  }
+  else if (hyg.humidity <= plant.max_Shumidity) {
     p.on_pump = false;
     f.on_fan = true;
   }
-  else if(hum.humidity >= 1040){
+  else if (hyg.humidity >= plant.min_Shumidity) {
     p.on_pump = true;
     f.on_fan = false;
   }
 }
 
-void control_light(Light &lig, Lamp&l){
-  if(lig.light < 500){
-    l.on_lamp = false;
-  }
-  else{
+void control_light(Light &lig, Lamp &l, Plant &p) {
+  if (lig.light > p.min_light && lig.light < p.max_light) {
     l.on_lamp = true;
   }
+  else {
+    l.on_lamp = false;
+  }
 }
 
+void scheduled_ventilation(Fan &f) {
+  const unsigned long int sixhours = 21600000;
+  const unsigned long int sixminutes = 360000;
+  if (millis() % sixhours > 0 && millis() % sixhours <= sixminutes) {
+    f.on_fan = true;
+  }
+}
 
 Fan fan(7);
 Lamp lamp(6);
@@ -200,36 +211,37 @@ AirSensor air(2);
 HygrometerSoil soil(A1);
 Light light(A0);
 
-
-void setup(){
+void setup() {
   Serial.begin(9600);
   air.begin();
+  tomato_init();
 }
 
 unsigned long lastUpdate = 0;
 
 void loop() {
-  if(millis() - lastUpdate >= 2000){
-    lastUpdate = millis();
+  if (millis() - lastUpdate >= 2000) {
     air.update();
   }
   soil.get_humidity();
-	light.get_light();
+  light.get_light();
 
-	control_temperature(air, heater, fan);
-	control_air_humidity(air, pump, fan);
-  control_soil_humidity(soil, pump, fan);
-	control_light(light, lamp);
+  control_temperature(air, heater, fan, tomato);
+  control_air_humidity(air, fan, tomato);
+  control_soil_humidity(soil, pump, fan, tomato);
+  control_light(light, lamp, tomato);
+  scheduled_ventilation(fan);
 
-	heater.power();
-	fan.power();
-	lamp.power();
-	pump.power();
+  heater.power();
+  fan.power();
+  lamp.power();
+  pump.power();
 
-if(millis() - lastUpdate >= 2000){
-  Serial.print(" влажность почвы "); Serial.print(soil.humidity);
-  Serial.print(" влажность воздуха "); Serial.print(air.humidity);
-  Serial.print(" температура "); Serial.print(air.temperature);
-  Serial.print(" освещенность "); Serial.println(light.light);
+  if (millis() - lastUpdate >= 2000) {
+    lastUpdate = millis();
+    Serial.print(" влажность почвы "); Serial.print(soil.humidity);
+    Serial.print(" влажность воздуха "); Serial.print(air.humidity);
+    Serial.print(" температура "); Serial.print(air.temperature);
+    Serial.print(" освещенность "); Serial.println(light.light);
   }
 }
