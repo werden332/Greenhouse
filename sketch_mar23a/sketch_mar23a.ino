@@ -1,6 +1,22 @@
 #include <stdio.h>
 #include <DHT.h> 
 
+unsigned long startMillis;
+int startSeconds = 0;
+int startMinutes = 0;
+int startHours = 0;
+bool timeSet = false;
+
+// Настройки
+int heat_sensor_temperature_on = 20;    // температура ниже которой включается обогреватель
+int heat_sensor_temperature_off = 40;   // температура выше которой выключается обогреватель
+int gigrometer_air_percent_off = 70;    // влажность воздуха выше которой выключается помпа
+int gigrometer_soil_percent_off = 70;   // влажность почвы выше которой выключается помпа
+int gigrometer_air_percent_on = 30;     // влажность воздуха ниже которой включается помпа
+int gigrometer_soil_percent_on = 30;    // влажность почвы ниже которой включается помпа
+int time_morning = 8;                   // начало дня (лампа и вентилятор работают)
+int time_night = 20;                    // начало ночи
+
 class Thermometer {
 private:
     int pin;
@@ -66,8 +82,6 @@ public:
     void power(){ digitalWrite(pin, is_on ? HIGH : LOW); }
 };
 
-
-
 class Fan {
 private:
     int pin;
@@ -82,7 +96,7 @@ public:
 class Pump {
 private:
     int pin;
-    bool is_on=1;
+    bool is_on;
 public:
     Pump(int pin) : pin(pin), is_on(0){}; 
     void set_on(bool condition){ is_on = condition; }
@@ -130,76 +144,144 @@ Heater heater(heater_pin);
 Pump pump(pump_pin);
 Lump lump(lump_pin);
 
+int get_current_hour() {
+    if (!timeSet) return 12; // если время не установлено, считаем что день
+    
+    unsigned long elapsed = millis() - startMillis;
+    unsigned long totalSeconds = elapsed / 1000;
+    int currentHours = (startHours + (startMinutes + (startSeconds + totalSeconds) / 60) / 60) % 24;
+    return currentHours;
+}
+
 void control_temperature()
 {
-    if (thermometer.get_temperature() > 40) {
+    int currentHour = get_current_hour();
+    bool isDaytime = (currentHour >= time_morning && currentHour < time_night);
+    
+    if (thermometer.get_temperature() > heat_sensor_temperature_off) {
         heater.set_on(0);
-        fan.set_on(1);
+        if (isDaytime) {
+            fan.set_on(1);
+        }
     }
 
-    if (thermometer.get_temperature() < 30) {
+    if (thermometer.get_temperature() < heat_sensor_temperature_on) {
         heater.set_on(1);
-        fan.set_on(1);
+        if (isDaytime) {
+            fan.set_on(1);
+        }
     }
 }
 
 void control_light()
 {
-    if (light_sensor.get_light() < 500) {
-        lump.set_on(0);
-    }
-    else{
+    int currentHour = get_current_hour();
+    
+    if (light_sensor.get_light() < 500 && currentHour >= time_morning && currentHour < time_night) {
         lump.set_on(1);
+    }
+    else {
+        lump.set_on(0);
     }
 }
 
 unsigned long previousMillis = 0;
 const long interval = 1000; 
+
 void control_humidity()
 {
-    if (gigrometer_air.get_humidity() > 70 && (gigrometer_soil.get_humidity()/1023)*100 > 70) {
+    float airHumidity = gigrometer_air.get_humidity();
+    float soilHumidity = (gigrometer_soil.get_humidity() / 1023.0) * 100;
+    
+    if (airHumidity > gigrometer_air_percent_off && soilHumidity > gigrometer_soil_percent_off) {
         pump.set_on(0);
     }
-    
-    if (gigrometer_air.get_humidity() < 20 && gigrometer_soil.get_humidity() < 30) {
+
+    if (airHumidity < gigrometer_air_percent_on && soilHumidity < gigrometer_soil_percent_on) {
         unsigned long currentMillis = millis();
         if (currentMillis - previousMillis >= interval) {
-        previousMillis = currentMillis;
-         pump.set_on(!pump.get_pump_condition());
+            previousMillis = currentMillis;
+            pump.set_on(!pump.get_pump_condition());
         }
     }
 }
-void print_data(){
-    Serial.print("Температура: ");
-    Serial.println(thermometer.get_temperature());
-    Serial.print("Влажность почвы: ");
-    Serial.println(gigrometer_soil.get_humidity());
-    Serial.print("Влажность воздуха: ");
-    Serial.println(gigrometer_air.get_humidity());
-}
-
 unsigned long previousMillis_print = 0;
 const long interval_print = 1000;
+
+unsigned long currentMillis_print = millis();
+void print_data(){
+    if (currentMillis_print - previousMillis_print >= interval_print) {
+        previousMillis_print = currentMillis_print;
+        Serial.print("Температура: ");
+        Serial.print(thermometer.get_temperature());
+        Serial.println(" °C");
+        Serial.print("Влажность почвы: ");
+        Serial.print((gigrometer_soil.get_humidity() / 1023.0) * 100);
+        Serial.println(" %");
+        Serial.print("Влажность воздуха: ");
+        Serial.print(gigrometer_air.get_humidity());
+        Serial.println(" %");
+        if (timeSet){
+            Serial.print("Текущее время: ");
+            int currentHour = get_current_hour();
+            Serial.println(currentHour);
+        }
+        Serial.println("---");
+    }
+}
+void printTime() {
+  if (startHours < 10) Serial.print("0");
+  Serial.print(startHours);
+  Serial.print(":");
+  if (startMinutes < 10) Serial.print("0");
+  Serial.print(startMinutes);
+  Serial.print(":");
+  if (startSeconds < 10) Serial.print("0");
+  Serial.println(startSeconds);
+}
+
+void time_cycle(){
+    if (!timeSet) {
+        if (Serial.available()) {
+            String input = Serial.readStringUntil('\n');
+            input.trim();
+
+            int h = input.substring(0, 2).toInt();
+            int m = input.substring(3, 5).toInt();
+            int s = input.substring(6, 8).toInt();
+            
+            if (h >= 0 && h <= 23 && m >= 0 && m <= 59 && s >= 0 && s <= 59) {
+                startHours = h;
+                startMinutes = m;
+                startSeconds = s;
+                startMillis = millis();
+                timeSet = true;
+                Serial.print("Время установлено: ");
+                printTime();
+            } else {
+                Serial.println("Неверный формат! Попробуйте ещё раз.");
+            }
+        }
+    }
+}
+
+
+
 void loop()
 {    
-  thermometer.get_temperature();
-  gigrometer_air.get_humidity();
-  gigrometer_soil.get_humidity();
-  light_sensor.get_light();
+    time_cycle(); 
 
-  control_temperature();
-  control_humidity();
-  control_light();
+    thermometer.get_temperature();
+    gigrometer_air.get_humidity();
+    gigrometer_soil.get_humidity();
+    light_sensor.get_light();
 
-  lump.power();
-  heater.power();
-  pump.power();
-  fan.power();
-  
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis_print >= interval_print) {
-  previousMillis_print = currentMillis;
-  print_data();
-  }
-    
+    control_temperature();
+    control_humidity();
+    control_light();
+
+    lump.power();
+    heater.power();
+    pump.power();
+    fan.power();
 }
