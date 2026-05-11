@@ -1,0 +1,244 @@
+#include <stdio.h>
+#include <DHT.h>
+
+struct Plant {
+  int max_temperature;
+  int min_temperature;
+  int max_Ahumidity;
+  int min_Ahumidity;
+  int max_Shumidity;
+  int min_Shumidity;
+  int max_light;
+  int min_light;
+  int night_light;
+};
+
+Plant tomato;
+
+void tomato_init() {
+  tomato.max_temperature = 30;
+  tomato.min_temperature = 20;
+  tomato.max_Shumidity = 800;
+  tomato.min_Shumidity = 600;
+  tomato.max_Ahumidity = 70;
+  tomato.min_Ahumidity = 50;
+  tomato.max_light = 700;
+  tomato.min_light = 500;
+}
+
+// датчики
+class AirSensor {
+private:
+  int pin;
+  DHT dht;
+public:
+  float humidity;
+  float temperature;
+  
+  AirSensor(int pin) : dht(pin, DHT11), pin(pin) {
+    humidity = 0;
+    temperature = 0;
+  }
+
+  void begin() { dht.begin(); }
+
+  void get_humidity(){ humidity = dht.readHumidity(); }
+  void get_temperature(){ temperature = dht.readTemperature(); }
+};
+
+class HygrometerSoil {
+private:
+  int pin;
+public:
+  int humidity;
+  HygrometerSoil(int pin) : pin(pin) { humidity = 0; }
+  void get_humidity() { humidity = analogRead(pin); }
+};
+
+class Light {
+private:
+  int pin;
+public:
+  int light;
+  Light(int pin) : pin(pin) { light = 0; }
+  void get_light() { light = analogRead(pin); }
+};
+
+// актуаторы
+class Lamp {
+private:
+  int pin;
+public:
+  bool on_lamp;
+  Lamp(int pin) : pin(pin) {
+    on_lamp = false;
+    pinMode(pin, OUTPUT);
+  }
+  void power();
+};
+
+class Fan {
+private:
+  int pin;
+public:
+  bool on_fan;
+  Fan(int pin) : pin(pin) {
+    on_fan = false;
+    pinMode(pin, OUTPUT);
+  }
+  void power();
+};
+
+class Heater {
+private:
+  int pin;
+public:
+  bool on_heat;
+  Heater(int pin) : pin(pin) {
+    on_heat = false;
+    pinMode(pin, OUTPUT);
+  }
+  void power();
+};
+
+class Pump {
+private:
+  int pin;
+public:
+  bool on_pump;
+  Pump(int pin) : pin(pin) {
+    on_pump = false;
+    pinMode(pin, OUTPUT);
+  }
+  void power();
+};
+
+void Heater::power() {
+  if (on_heat) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
+}
+
+void Pump::power() {
+  if (on_pump && millis() % 10000 <= 2000) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
+}
+
+void Lamp::power() {
+  if (on_lamp) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
+}
+
+void Fan::power() {
+  if (on_fan) { digitalWrite(pin, HIGH); }
+  else { digitalWrite(pin, LOW); }
+}
+
+void control_temperature(AirSensor &temp, Heater &heat, Fan &fan, Plant &plant);
+void control_air_humidity(AirSensor &hyg, Fan &fan, Plant &plant);
+void control_soil_humidity(HygrometerSoil &hyg, Pump &pump, Fan &fan, Plant &plant);
+void control_light(Light &light, Lamp &lamp, Plant &plant);
+void scheduled_ventilation(Fan &fan);
+
+
+void control_temperature(AirSensor &temp, Heater &heat, Fan &fan, Plant &plant) {
+  if (temp.temperature > plant.min_temperature && temp.temperature < plant.max_temperature) {
+    heat.on_heat = false;
+    fan.on_fan = false;
+  }
+  else if (temp.temperature < plant.min_temperature) {
+    heat.on_heat = true;
+    fan.on_fan = false;
+  }
+  else if (temp.temperature > plant.max_temperature) {
+    heat.on_heat = false;
+    fan.on_fan = true;
+  }
+}
+
+void control_air_humidity(AirSensor &hyg, Fan &fan, Plant &plant) {
+  if (hyg.humidity > plant.min_Ahumidity && hyg.humidity < plant.max_Ahumidity) {
+    fan.on_fan = false;
+  }
+  else if (hyg.humidity <= plant.min_Ahumidity) {
+    fan.on_fan = false;
+  }
+  else if (hyg.humidity >= plant.max_Ahumidity) {
+    fan.on_fan = true;
+  }
+}
+
+void control_soil_humidity(HygrometerSoil &hyg, Pump &pump, Fan &fan, Plant &plant) {
+  if (hyg.humidity > plant.max_Shumidity && hyg.humidity < plant.min_Shumidity) {
+    pump.on_pump = false;
+    fan.on_fan = false;
+  }
+  else if (hyg.humidity <= plant.max_Shumidity) {
+    pump.on_pump = false;
+    fan.on_fan = true;
+  }
+  else if (hyg.humidity >= plant.min_Shumidity) {
+    pump.on_pump = true;
+    fan.on_fan = false;
+  }
+}
+
+void control_light(Light &light, Lamp &lamp, Plant &plant) {
+  if (light.light > plant.min_light && light.light < plant.max_light) {
+    lamp.on_lamp = true;
+  }
+  else {
+    lamp.on_lamp = false;
+  }
+}
+
+void scheduled_ventilation(Fan &fan) {
+  const unsigned long int sixhours = 21600000;
+  const unsigned long int sixminutes = 360000;
+  if (millis() % sixhours > 0 && millis() % sixhours <= sixminutes) {
+    fan.on_fan = true;
+  }
+}
+
+Fan fan(7);
+Lamp lamp(6);
+Heater heater(4);
+Pump pump(5);
+
+AirSensor air(2);
+HygrometerSoil soil(A1);
+Light light(A0);
+
+void setup() {
+  Serial.begin(9600);
+  air.begin();
+  tomato_init();
+}
+
+unsigned long lastUpdate = 0;
+
+void loop() {
+
+  air.get_humidity();
+  air.get_temperature();
+  soil.get_humidity();
+  light.get_light();
+
+  control_temperature(air, heater, fan, tomato);
+  control_air_humidity(air, fan, tomato);
+  control_soil_humidity(soil, pump, fan, tomato);
+  control_light(light, lamp, tomato);
+  scheduled_ventilation(fan);
+
+  heater.power();
+  fan.power();
+  lamp.power();
+  pump.power();
+
+  if (millis() - lastUpdate >= 2000) {
+    lastUpdate = millis();
+    Serial.print(" влажность почвы "); Serial.print(soil.humidity);
+    Serial.print(" влажность воздуха "); Serial.print(air.humidity);
+    Serial.print(" температура "); Serial.print(air.temperature);
+    Serial.print(" освещенность "); Serial.println(light.light);
+  }
+}
