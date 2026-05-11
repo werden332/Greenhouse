@@ -208,8 +208,8 @@ void control_humidity()
 unsigned long previousMillis_print = 0;
 const long interval_print = 1000;
 
-unsigned long currentMillis_print = millis();
 void print_data(){
+    unsigned long currentMillis_print = millis();
     if (currentMillis_print - previousMillis_print >= interval_print) {
         previousMillis_print = currentMillis_print;
         Serial.print("Температура: ");
@@ -271,11 +271,6 @@ void loop()
 {    
     time_cycle(); 
 
-    thermometer.get_temperature();
-    gigrometer_air.get_humidity();
-    gigrometer_soil.get_humidity();
-    light_sensor.get_light();
-
     control_temperature();
     control_humidity();
     control_light();
@@ -284,4 +279,8 @@ void loop()
     heater.power();
     pump.power();
     fan.power();
+
+    Serial.print("Температура: ");
+    Serial.print(thermometer.get_temperature());
+    print_data();
 }
