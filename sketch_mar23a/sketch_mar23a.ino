@@ -218,7 +218,7 @@ const long interval_soil = 1000;
 void control_humidity_soil()
 {
     float airHumidity = gigrometer_air.get_humidity();
-    float soilHumidity = (gigrometer_soil.get_humidity() / 1023.0) * 100;
+    float soilHumidity = 100 - (gigrometer_soil.get_humidity() / 1023.0) * 100;
     
     if (soilHumidity > gigrometer_soil_percent_off) {
         pump.set_on(0);
@@ -237,13 +237,13 @@ const long interval_print = 1000;
 
 void print_data(){
     unsigned long currentMillis_print = millis();
-    if (currentMillis_print - previousMillis_print >= interval_print) {
+    if (currentMillis_print - previousMillis_print >= interval_print && timeSet) {
         previousMillis_print = currentMillis_print;
         Serial.print("Температура: ");
         Serial.print(thermometer.get_temperature());
         Serial.println(" °C");
         Serial.print("Влажность почвы: ");
-        Serial.print((gigrometer_soil.get_humidity() / 1023.0) * 100);
+        Serial.print(100 - (gigrometer_soil.get_humidity() / 1023.0) * 100);
         Serial.println(" %");
         Serial.print("Влажность воздуха: ");
         Serial.print(gigrometer_air.get_humidity());
