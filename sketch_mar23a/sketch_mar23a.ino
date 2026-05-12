@@ -292,8 +292,6 @@ void time_cycle(){
     }
 }
 
-
-
 void loop()
 {    
     time_cycle(); 
