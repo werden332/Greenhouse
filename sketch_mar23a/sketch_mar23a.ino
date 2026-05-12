@@ -16,6 +16,8 @@ int gigrometer_air_percent_on = 30;     // влажность воздуха н�
 int gigrometer_soil_percent_on = 30;    // влажность почвы ниже которой включается помпа
 int time_morning = 8;                   // начало дня (лампа и вентилятор работают)
 int time_night = 20;                    // начало ночи
+const long interval_aired = 15000;      // время проветривания
+int aired_interval = 6;                 // интервал проветривания
 
 class Thermometer {
 private:
@@ -86,11 +88,14 @@ class Fan {
 private:
     int pin;
     bool is_on;
+    bool is_aired_flag;
 public:
     Fan(int pin) : pin(pin), is_on(0){}; 
     void set_on(bool condition){ is_on = condition; }
     bool get_fan_condition(){ return is_on; }
     void power(){ digitalWrite(pin, is_on ? HIGH : LOW); }
+    void set_aired(bool condition){ is_aired_flag = condition; }
+    bool is_aired(){ return is_aired_flag; }
 };
 
 class Pump {
@@ -153,6 +158,25 @@ int get_current_hour() {
     return currentHours;
 }
 
+unsigned long previousMillis_aired = 0;
+void control_humidity_air(){
+    int currentHour = get_current_hour();
+    if ((currentHour-startHours) % aired_interval == 0 && !fan.is_aired()){
+        unsigned long currentMillis_aired = millis();
+        if (currentMillis_aired - previousMillis_aired >= interval_aired) {
+            previousMillis_aired = currentMillis_aired;
+            fan.set_on(1);
+        }
+        else{
+            previousMillis_aired = 0;
+            fan.set_aired(1);
+        }
+    }
+    else {
+        fan.set_aired(0);
+    }
+}
+
 void control_temperature()
 {
     int currentHour = get_current_hour();
@@ -171,6 +195,9 @@ void control_temperature()
             fan.set_on(1);
         }
     }
+    else if (fan.is_aired()){
+        fan.set_on(0);
+    }
 }
 
 void control_light()
@@ -185,22 +212,22 @@ void control_light()
     }
 }
 
-unsigned long previousMillis = 0;
-const long interval = 1000; 
+unsigned long previousMillis_soil = 0;
+const long interval_soil = 1000; 
 
-void control_humidity()
+void control_humidity_soil()
 {
     float airHumidity = gigrometer_air.get_humidity();
     float soilHumidity = (gigrometer_soil.get_humidity() / 1023.0) * 100;
     
-    if (airHumidity > gigrometer_air_percent_off && soilHumidity > gigrometer_soil_percent_off) {
+    if (soilHumidity > gigrometer_soil_percent_off) {
         pump.set_on(0);
     }
 
-    if (airHumidity < gigrometer_air_percent_on && soilHumidity < gigrometer_soil_percent_on) {
-        unsigned long currentMillis = millis();
-        if (currentMillis - previousMillis >= interval) {
-            previousMillis = currentMillis;
+    if (soilHumidity < gigrometer_soil_percent_on) {
+        unsigned long currentMillis_soil = millis();
+        if (currentMillis_soil - previousMillis_soil >= interval_soil) {
+            previousMillis_soil = currentMillis_soil;
             pump.set_on(!pump.get_pump_condition());
         }
     }
@@ -272,15 +299,15 @@ void loop()
     time_cycle(); 
 
     control_temperature();
-    control_humidity();
+    control_humidity_soil();
+    control_humidity_air();
     control_light();
+    
 
     lump.power();
     heater.power();
     pump.power();
     fan.power();
 
-    Serial.print("Температура: ");
-    Serial.print(thermometer.get_temperature());
     print_data();
 }
