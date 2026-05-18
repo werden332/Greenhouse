@@ -266,7 +266,7 @@ void print_data(){
         Serial.println("---");
     }
 }
-void printTime() {
+void print_time() {
   if (start_hours < 10) Serial.print("0");
   Serial.print(start_hours);
   Serial.print(":");
@@ -294,7 +294,7 @@ void time_cycle(){
                 start_millis = millis();
                 time_set = true;
                 Serial.print("Время установлено: ");
-                printTime();
+                print_time();
             } else {
                 Serial.println("Неверный формат! Попробуйте ещё раз.");
             }
